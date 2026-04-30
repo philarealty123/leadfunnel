@@ -1,0 +1,25 @@
+sources:
+
+  - id: pa_philadelphia_tax_delinquent
+    label: "Philadelphia Tax Delinquent (Open Data)"
+    parser_module: philly_open_data
+    state: PA
+    county: Philadelphia
+    source_type: tax_delinquent
+    active: true
+
+  - id: pa_philadelphia_li_violations
+    label: "Philadelphia L&I Code Violations"
+    parser_module: philly_li_violations
+    state: PA
+    county: Philadelphia
+    source_type: code_violation
+    active: true
+
+  - id: pa_philadelphia_absentee_owners
+    label: "Philadelphia Absentee Owners (OPA Assessment)"
+    parser_module: parcel_assessment
+    state: PA
+    county: Philadelphia
+    source_type: absentee
+    active: true
