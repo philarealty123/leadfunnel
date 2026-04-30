@@ -11,6 +11,7 @@ Usage:
 """
 import importlib
 import os
+import logging
 import sys
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(
-        level=os.environ.get("LOG_LEVEL", "INFO")
+        logging.getLevelName(os.environ.get("LOG_LEVEL", "INFO"))
     )
 )
 log = structlog.get_logger()
