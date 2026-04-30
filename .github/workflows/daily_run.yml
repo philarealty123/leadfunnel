@@ -1,0 +1,41 @@
+name: Daily Motivated Seller Pipeline
+
+on:
+  schedule:
+      - cron: '0 7 * * *'
+        workflow_dispatch:
+
+        jobs:
+          run-pipeline:
+              runs-on: ubuntu-latest
+                  steps:
+                        - uses: actions/checkout@v4
+
+                              - uses: actions/setup-python@v5
+                                      with:
+                                                python-version: '3.11'
+                                                          cache: 'pip'
+
+                                                                - name: Install dependencies
+                                                                        run: pip install -r requirements.txt
+
+                                                                              - name: Write Google credentials
+                                                                                      run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > /tmp/goog_creds.json
+
+                                                                                            - name: Init DB
+                                                                                                    run: python main.py init-db
+                                                                                                            env:
+                                                                                                                      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+                                                                                                                            - name: Run all active adapters
+                                                                                                                                    run: python main.py run
+                                                                                                                                            env:
+                                                                                                                                                      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+                                                                                                                                                                GOOGLE_CREDENTIALS_JSON: /tmp/goog_creds.json
+
+                                                                                                                                                                      - name: Push to Google Sheet
+                                                                                                                                                                              run: python main.py push-sheet
+                                                                                                                                                                                      env:
+                                                                                                                                                                                                DATABASE_URL: ${{ secrets.DATABASE_URL }}
+                                                                                                                                                                                                          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+                                                                                                                                                                                                                    GOOGLE_CREDENTIALS_JSON: /tmp/goog_creds.json
