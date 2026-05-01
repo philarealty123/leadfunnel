@@ -25,13 +25,14 @@ class PhillyLiViolationsAdapter(BaseAdapter):
         return [str(o) for o in range(0, total + PAGE_SIZE, PAGE_SIZE)]
 
     def fetch(self, offset_str):
-        params = {
-            "$limit":  PAGE_SIZE,
-            "$offset": int(offset_str),
-            "$where":  OPEN_FILTER,
-            "$order":  "casecreateddate DESC",
-        }
-        data = fetch_json_api(BASE_URL, params=params)
+        url = (
+            f"{BASE_URL}"
+            f"?$limit={PAGE_SIZE}"
+            f"&$offset={int(offset_str)}"
+            f"&$where={OPEN_FILTER}"
+            f"&$order=casecreateddate DESC"
+        )
+        data = fetch_json_api(url)
         if offset_str == "0":
             save_artifact(
                 self.source_id, BASE_URL, data, "json",
