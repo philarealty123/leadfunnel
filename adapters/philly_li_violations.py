@@ -1,4 +1,5 @@
 import urllib.parse
+from datetime import datetime, timedelta
 
 from adapters.base import BaseAdapter
 from core.fetcher import fetch_json_api, save_artifact
@@ -8,27 +9,41 @@ from core.scoring import compute_score
 PARSER_VERSION = "1.0.0"
 PAGE_SIZE = 1000
 CARTO_SQL_URL = "https://phl.carto.com/api/v2/sql"
+TABLE = "violations"
+LOOKBACK_DAYS = 30
+
+
+def _cutoff_date():
+    """Return ISO date string for LOOKBACK_DAYS ago."""
+    return (datetime.utcnow() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
 
 
 class PhillyLiViolationsAdapter(BaseAdapter):
     VERSION = PARSER_VERSION
 
     def discover(self):
+        cutoff = _cutoff_date()
         try:
-            sql = "SELECT COUNT(*) as cnt FROM violations WHERE violationstatus = 'Open'"
+            sql = (
+                f"SELECT COUNT(*) as cnt FROM {TABLE}"
+                f" WHERE violationstatus = 'Open'"
+                f" AND violationdate >= '{cutoff}'"
+            )
             url = CARTO_SQL_URL + "?q=" + urllib.parse.quote(sql)
             resp = fetch_json_api(url)
             total = int(resp["rows"][0].get("cnt", 0))
         except Exception:
-            total = 50_000
+            total = 5_000
         return [str(o) for o in range(0, total + PAGE_SIZE, PAGE_SIZE)]
 
     def fetch(self, offset_str):
+        cutoff = _cutoff_date()
         offset = int(offset_str)
         sql = (
-            "SELECT * FROM violations"
-            " WHERE violationstatus = 'Open'"
-            " ORDER BY violationdate DESC"
+            f"SELECT * FROM {TABLE}"
+            f" WHERE violationstatus = 'Open'"
+            f" AND violationdate >= '{cutoff}'"
+            f" ORDER BY violationdate DESC"
             f" LIMIT {PAGE_SIZE} OFFSET {offset}"
         )
         url = CARTO_SQL_URL + "?q=" + urllib.parse.quote(sql)
