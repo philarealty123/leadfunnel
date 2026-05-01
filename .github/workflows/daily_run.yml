@@ -20,22 +20,16 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check DB URL scheme
-        run: |
-          python -c "
-import os
-url = os.environ.get('DATABASE_URL', '')
-scheme = url.split('://')[0] if '://' in url else 'not_set'
-print(f'db_scheme={scheme}')
-"
+        run: python -c "import os; url=os.environ.get('DATABASE_URL',''); print('db_scheme=' + (url.split('://')[0] if '://' in url else 'not_set'))"
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Restore SQLite cache (if using SQLite)
+      - name: Restore SQLite DB cache
         uses: actions/cache@v4
         with:
           path: data/leads.db
-          key: leads-db-sqlite
-          restore-keys: leads-db-sqlite
+          key: leads-db-v1
+          restore-keys: leads-db-v1
 
       - name: Write Google credentials
         run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > /tmp/goog_creds.json
@@ -58,9 +52,9 @@ print(f'db_scheme={scheme}')
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_CREDENTIALS_JSON: /tmp/goog_creds.json
 
-      - name: Save SQLite cache (if using SQLite)
+      - name: Save SQLite DB cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache@v4
         with:
           path: data/leads.db
-          key: leads-db-sqlite
+          key: leads-db-v1
