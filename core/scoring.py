@@ -27,12 +27,30 @@ def score_to_priority(score):
         return "COLD"
 
 
+def compute_score(record: dict) -> tuple:
+    """Return (score, priority) for a record based on its source_type."""
+    source_type = record.get("source_type", "")
+    signals = record.get("signals", [source_type] if source_type else [])
+    score = 0
+    best_signal = None
+    best_weight = 0
+    for sig in signals:
+        w = SIGNAL_WEIGHTS.get(sig, 0)
+        if w > best_weight:
+            best_weight = w
+            best_signal = sig
+    if len(signals) > 1:
+        score = best_weight + SIGNAL_WEIGHTS.get("multi_signal", 0)
+    else:
+        score = best_weight
+    priority = score_to_priority(score)
+    return score, priority
+
+
 def score_lead(record: dict) -> dict:
     signals = record.get("signals", [])
     score = 0
     category = "unknown"
-
-    # Find highest-weight matching signal
     best_weight = 0
     best_signal = None
     for sig in signals:
@@ -40,8 +58,6 @@ def score_lead(record: dict) -> dict:
         if w > best_weight:
             best_weight = w
             best_signal = sig
-
-    # Add multi-signal bonus
     if len(signals) > 1:
         score = best_weight + SIGNAL_WEIGHTS.get("multi_signal", 0)
         category = "multi_signal"
@@ -51,7 +67,6 @@ def score_lead(record: dict) -> dict:
     else:
         score = 0
         category = "unknown"
-
     priority = score_to_priority(score)
     return {
         **record,
