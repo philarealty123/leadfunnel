@@ -8,7 +8,7 @@ sources:
     access_method: api
     cadence: weekly
     parser_module: philly_open_data
-    active: true
+    active: false
     compliance: Philadelphia open data. CC BY license. No auth required.
 
   - id: pa_philadelphia_li_violations
