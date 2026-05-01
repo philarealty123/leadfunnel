@@ -84,6 +84,10 @@ Index("idx_leads_parcel", leads.c.parcel_id_normalized)
 
 def get_engine(db_url=None):
     url = db_url or os.environ.get("DATABASE_URL", "sqlite:///data/leads.db")
+    if url.startswith("sqlite:///"):
+        db_path = url[len("sqlite:///"):]
+        from pathlib import Path
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     return create_engine(url, poolclass=NullPool, echo=False)
 
 
