@@ -58,29 +58,39 @@ def _hash_content(content: bytes) -> str:
 )
 def fetch_url(url: str, headers: dict = None, timeout: int = 30) -> requests.Response:
     hdrs = {**DEFAULT_HEADERS, **(headers or {})}
-    if not _can_fetch(url):
-        log.warning("fetcher.robots_disallowed", url=url)
-        raise PermissionError(f"robots.txt disallows: {url}")
     resp = requests.get(url, headers=hdrs, timeout=timeout)
     resp.raise_for_status()
     return resp
 
 
+def fetch_json_api(url: str, params: dict = None, headers: dict = None, timeout: int = 30) -> list:
+    hdrs = {**DEFAULT_HEADERS, **(headers or {})}
+    resp = requests.get(url, params=params, headers=hdrs, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def save_artifact(
     source_id: str,
     source_url: str,
-    content: bytes,
-    artifact_type: str = "html",
+    content,
+    artifact_type: str = "json",
     parser_version: str = "1.0",
     http_status: int = 200,
     engine=None,
 ) -> Path:
     eng = engine or get_engine()
-    content_hash = _hash_content(content)
+    if isinstance(content, (dict, list)):
+        raw_bytes = json.dumps(content).encode("utf-8")
+    elif isinstance(content, str):
+        raw_bytes = content.encode("utf-8")
+    else:
+        raw_bytes = content
+    content_hash = _hash_content(raw_bytes)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     fname = f"{source_id}_{ts}.{artifact_type}"
     fpath = RAW_DIR / fname
-    fpath.write_bytes(content)
+    fpath.write_bytes(raw_bytes)
 
     with eng.begin() as conn:
         conn.execute(
