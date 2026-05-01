@@ -60,7 +60,7 @@ def normalize_owner_name(raw):
     return cleaned
 
 
-def normalize_parcel_id(raw):
+def normalize_parcel_id(raw, county=None):
     if not raw:
         return ""
     return re.sub(r"[^A-Z0-9]", "", raw.upper())
