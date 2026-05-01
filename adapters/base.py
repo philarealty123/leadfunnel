@@ -21,8 +21,11 @@ class BaseAdapter(ABC):
     def parse(self, raw):
         ...
 
+    def normalize(self, raw):
+        return raw
+
     def run(self):
         for target in self.discover():
             raw = self.fetch(target)
             for record in self.parse(raw):
-                yield record
+                yield self.normalize(record)
