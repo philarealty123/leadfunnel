@@ -10,11 +10,13 @@ from core.scoring import compute_score
 PARSER_VERSION = "1.0.0"
 PAGE_SIZE = 1000
 BASE_URL = "https://data.phila.gov/resource/w7rb-qrn8.json"
+# Residential category codes: 1=single family, 2=multi-family
+CATEGORY_FILTER = "category_code IN('1','2')"
 LOOKBACK_DAYS = 30
 
 
 def _cutoff_date():
-    """Return ISO date string for LOOKBACK_DAYS ago."""
+    """Return ISO datetime string for LOOKBACK_DAYS ago."""
     return (datetime.utcnow() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%dT00:00:00")
 
 
@@ -22,18 +24,25 @@ class ParcelAssessmentAdapter(BaseAdapter):
     VERSION = PARSER_VERSION
 
     def discover(self):
+        """
+        Use recording_date (deed recording) as the "newly absentee" signal.
+        recording_date is when new ownership was recorded with the city.
+        If the count call fails, fall back to a small batch so dedupe handles repeats.
+        """
         cutoff = _cutoff_date()
         try:
             url = (
                 f"{BASE_URL}"
                 f"?$select=count(*)"
-                f"&$where=category_code='1' AND sale_date>='{cutoff}'"
+                f"&$where={CATEGORY_FILTER}"
+                f" AND recording_date>='{cutoff}'"
             )
             count_data = fetch_json_api(url)
             total = int(count_data[0].get("count", 0))
         except Exception:
-            total = 5_000
-        return [str(o) for o in range(0, total + PAGE_SIZE, PAGE_SIZE)]
+            # Fallback: pull a capped batch; dedupe prevents reprocessing
+            total = PAGE_SIZE
+        return [str(o) for o in range(0, max(total, PAGE_SIZE) + PAGE_SIZE, PAGE_SIZE)]
 
     def fetch(self, offset_str):
         cutoff = _cutoff_date()
@@ -41,8 +50,9 @@ class ParcelAssessmentAdapter(BaseAdapter):
             f"{BASE_URL}"
             f"?$limit={PAGE_SIZE}"
             f"&$offset={int(offset_str)}"
-            f"&$where=category_code='1' AND sale_date>='{cutoff}'"
-            f"&$order=sale_date DESC"
+            f"&$where={CATEGORY_FILTER}"
+            f" AND recording_date>='{cutoff}'"
+            f"&$order=recording_date DESC"
         )
         data = fetch_json_api(url)
         if offset_str == "0":
@@ -53,21 +63,28 @@ class ParcelAssessmentAdapter(BaseAdapter):
         return data
 
     def parse(self, raw):
+        """
+        Absentee filter: mailing address is different from property/site address.
+        This identifies the current owner as non-resident (absentee).
+        """
         results = []
         for rec in raw:
             prop_addr = (rec.get("location") or "").strip().upper()
+            mailing_street = (rec.get("mailing_street") or "").strip().upper()
             mailing = ", ".join(
                 p.strip() for p in [
-                    rec.get("mailing_address", ""),
+                    rec.get("mailing_street", ""),
+                    rec.get("mailing_address_1", ""),
                     rec.get("mailing_address_2", ""),
-                    rec.get("mailing_city", ""),
-                    rec.get("mailing_state", ""),
+                    rec.get("mailing_city_state", ""),
                     rec.get("mailing_zip", ""),
                 ] if p and p.strip()
             )
-            if not prop_addr or not mailing:
+            # Must have both addresses to compare
+            if not prop_addr or not mailing_street:
                 continue
-            if prop_addr in mailing.upper():
+            # Skip if mailing address matches property address (owner-occupied)
+            if mailing_street == prop_addr or mailing_street in prop_addr:
                 continue
             owner = " / ".join(
                 p.strip() for p in [rec.get("owner_1", ""), rec.get("owner_2", "")]
@@ -78,7 +95,7 @@ class ParcelAssessmentAdapter(BaseAdapter):
                 "property_address_raw": prop_addr,
                 "owner_name_raw": owner,
                 "mailing_address_raw": mailing,
-                "sale_date": (rec.get("sale_date") or "")[:10],
+                "recording_date": (rec.get("recording_date") or "")[:10],
                 "source_url": (
                     f"https://property.phila.gov/?p="
                     f"{rec.get('parcel_number', '').strip()}"
@@ -103,7 +120,7 @@ class ParcelAssessmentAdapter(BaseAdapter):
             "parcel_id_normalized": normalize_parcel_id(
                 raw["parcel_id_raw"], "Philadelphia"
             ),
-            "sale_date": raw.get("sale_date", ""),
+            "recording_date": raw.get("recording_date", ""),
             "motivation_category": "Absentee Owner",
             "motivation_score": score,
             "motivation_score_label": priority,
