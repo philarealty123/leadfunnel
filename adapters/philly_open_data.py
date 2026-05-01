@@ -1,4 +1,5 @@
 import math
+
 from adapters.base import BaseAdapter
 from core.fetcher import fetch_json_api, save_artifact
 from core.normalizer import normalize_address, normalize_parcel_id, normalize_owner_name
@@ -15,25 +16,26 @@ class PhillyOpenDataAdapter(BaseAdapter):
 
     def discover(self):
         try:
-            count_data = fetch_json_api(
-                f"{BASE_URL}?$select=count(*)&$where=total_due > {int(MIN_AMOUNT_DUE)}"
-            )
+            count_data = fetch_json_api(f"{BASE_URL}?$select=count(*)")
             total = int(count_data[0].get("count", 0))
         except Exception:
             total = 10_000
-        return [str(o) for o in range(0, math.ceil(total / PAGE_SIZE) * PAGE_SIZE + PAGE_SIZE, PAGE_SIZE)]
+        pages = math.ceil(total / PAGE_SIZE)
+        return [str(o) for o in range(0, pages * PAGE_SIZE, PAGE_SIZE)]
 
     def fetch(self, offset_str):
-        url = (
-            f"{BASE_URL}"
-            f"?$limit={PAGE_SIZE}"
-            f"&$offset={int(offset_str)}"
-            f"&$order=total_due DESC"
-            f"&$where=total_due > {int(MIN_AMOUNT_DUE)}"
-        )
-        data = fetch_json_api(url)
+        params = {
+            "$limit": PAGE_SIZE,
+            "$offset": int(offset_str),
+            "$order": "total_due DESC",
+            "$where": f"total_due > {MIN_AMOUNT_DUE}",
+        }
+        data = fetch_json_api(BASE_URL, params=params)
         if offset_str == "0":
-            save_artifact(self.source_id, BASE_URL, data, "json", self.VERSION, engine=self.engine)
+            save_artifact(
+                self.source_id, BASE_URL, data, "json",
+                self.VERSION, engine=self.engine,
+            )
         return data
 
     def parse(self, raw):
@@ -45,45 +47,53 @@ class PhillyOpenDataAdapter(BaseAdapter):
                 continue
             if total_due < MIN_AMOUNT_DUE:
                 continue
-            owner = " / ".join(p.strip() for p in [
-                rec.get("owner_1", ""),
-                rec.get("owner_2", ""),
-            ] if p and p.strip())
-            mailing = ", ".join(p.strip() for p in [
-                rec.get("mailing_address", ""),
-                rec.get("mailing_city", ""),
-                rec.get("mailing_state", ""),
-                rec.get("mailing_zip", ""),
-            ] if p and p.strip())
+            owner = " / ".join(
+                p.strip() for p in [rec.get("owner_1", ""), rec.get("owner_2", "")]
+                if p and p.strip()
+            )
+            mailing = ", ".join(
+                p.strip() for p in [
+                    rec.get("mailing_address", ""),
+                    rec.get("mailing_city", ""),
+                    rec.get("mailing_state", ""),
+                    rec.get("mailing_zip", ""),
+                ] if p and p.strip()
+            )
             results.append({
-                "parcel_id_raw": rec.get("parcel_number", "").strip(),
+                "parcel_id_raw":        rec.get("parcel_number", "").strip(),
                 "property_address_raw": rec.get("address", "").strip(),
-                "owner_name_raw": owner,
-                "mailing_address_raw": mailing,
-                "amount_due": total_due,
-                "tax_years_due": str(rec.get("num_years_owed", "")),
-                "source_url": f"https://property.phila.gov/?p={rec.get('parcel_number', '').strip()}",
+                "owner_name_raw":       owner,
+                "mailing_address_raw":  mailing,
+                "amount_due":           total_due,
+                "tax_years_due":        str(rec.get("num_years_owed", "")),
+                "source_url": (
+                    f"https://property.phila.gov/?p="
+                    f"{rec.get('parcel_number', '').strip()}"
+                ),
             })
         return results
 
     def normalize(self, raw):
         score, priority = compute_score({"source_type": "tax_delinquent"})
         return {
-            "source_id": self.source_id,
-            "source_type": "tax_delinquent",
-            "state": "PA",
-            "county": "Philadelphia",
-            "property_address_raw": raw["property_address_raw"],
+            "source_id":                   self.source_id,
+            "source_type":                 "tax_delinquent",
+            "state":                       "PA",
+            "county":                      "Philadelphia",
+            "property_address_raw":        raw["property_address_raw"],
             "property_address_normalized": normalize_address(raw["property_address_raw"]),
-            "owner_name_raw": raw["owner_name_raw"],
-            "owner_name_normalized": normalize_owner_name(raw["owner_name_raw"]),
-            "mailing_address_raw": raw["mailing_address_raw"],
-            "mailing_address_normalized": normalize_address(raw["mailing_address_raw"]),
-            "parcel_id_raw": raw["parcel_id_raw"],
-            "parcel_id_normalized": normalize_parcel_id(raw["parcel_id_raw"], "Philadelphia"),
-            "amount_due": raw["amount_due"],
-            "tax_years_due": raw["tax_years_due"],
-            "motivation_category": "tax_delinquent",
-            "motivation_score": score,
-            "source_url": raw["source_url"],
+            "owner_name_raw":              raw["owner_name_raw"],
+            "owner_name_normalized":       normalize_owner_name(raw["owner_name_raw"]),
+            "mailing_address_raw":         raw["mailing_address_raw"],
+            "mailing_address_normalized":  normalize_address(raw["mailing_address_raw"]),
+            "parcel_id_raw":               raw["parcel_id_raw"],
+            "parcel_id_normalized":        normalize_parcel_id(
+                raw["parcel_id_raw"], "Philadelphia"
+            ),
+            "amount_due":                  raw["amount_due"],
+            "tax_years_due":               raw["tax_years_due"],
+            "motivation_category":         "Tax Delinquent",
+            "motivation_score":            score,
+            "motivation_score_label":      priority,
+            "source_url":                  raw["source_url"],
         }
