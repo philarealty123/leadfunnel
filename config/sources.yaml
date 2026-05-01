@@ -1,25 +1,34 @@
 sources:
 
   - id: pa_philadelphia_tax_delinquent
-    label: "Philadelphia Tax Delinquent (Open Data)"
-    parser_module: philly_open_data
     state: PA
     county: Philadelphia
     source_type: tax_delinquent
+    official_url: https://data.phila.gov/resource/mxew-yygj.json
+    access_method: api
+    cadence: weekly
+    parser_module: philly_open_data
     active: true
+    compliance: Philadelphia open data. CC BY license. No auth required.
 
   - id: pa_philadelphia_li_violations
-    label: "Philadelphia L&I Code Violations"
-    parser_module: philly_li_violations
     state: PA
     county: Philadelphia
     source_type: code_violation
+    official_url: https://data.phila.gov/resource/dc-n4j4.json
+    access_method: api
+    cadence: daily
+    parser_module: philly_li_violations
     active: true
+    compliance: Philadelphia L&I violations open data.
 
-  - id: pa_philadelphia_absentee_owners
-    label: "Philadelphia Absentee Owners (OPA Assessment)"
-    parser_module: parcel_assessment
+  - id: pa_philadelphia_opa_properties
     state: PA
     county: Philadelphia
-    source_type: absentee
+    source_type: parcel_assessment
+    official_url: https://data.phila.gov/resource/w7rb-qrn8.json
+    access_method: api
+    cadence: monthly
+    parser_module: parcel_assessment
     active: true
+    compliance: OPA dataset. Absentee owner matching only.
