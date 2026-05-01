@@ -15,20 +15,23 @@ class PhillyOpenDataAdapter(BaseAdapter):
 
     def discover(self):
         try:
-            count_data = fetch_json_api(f"{BASE_URL}?$select=count(*)")
+            count_data = fetch_json_api(
+                f"{BASE_URL}?$select=count(*)&$where=total_due > {int(MIN_AMOUNT_DUE)}"
+            )
             total = int(count_data[0].get("count", 0))
         except Exception:
             total = 10_000
-        return [str(o) for o in range(0, math.ceil(total / PAGE_SIZE) * PAGE_SIZE, PAGE_SIZE)]
+        return [str(o) for o in range(0, math.ceil(total / PAGE_SIZE) * PAGE_SIZE + PAGE_SIZE, PAGE_SIZE)]
 
     def fetch(self, offset_str):
-        params = {
-            "$limit": PAGE_SIZE,
-            "$offset": int(offset_str),
-            "$order": "total_due DESC",
-            "$where": f"total_due > {MIN_AMOUNT_DUE}",
-        }
-        data = fetch_json_api(BASE_URL, params=params)
+        url = (
+            f"{BASE_URL}"
+            f"?$limit={PAGE_SIZE}"
+            f"&$offset={int(offset_str)}"
+            f"&$order=total_due DESC"
+            f"&$where=total_due > {int(MIN_AMOUNT_DUE)}"
+        )
+        data = fetch_json_api(url)
         if offset_str == "0":
             save_artifact(self.source_id, BASE_URL, data, "json", self.VERSION, engine=self.engine)
         return data
