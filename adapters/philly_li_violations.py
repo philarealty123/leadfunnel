@@ -15,20 +15,22 @@ class PhillyLiViolationsAdapter(BaseAdapter):
 
     def discover(self):
         try:
-            count_data = fetch_json_api(f"{BASE_URL}?$select=count(*)&$where={OPEN_FILTER}")
+            count_url = f"{BASE_URL}?$select=count(*)&$where={OPEN_FILTER}"
+            count_data = fetch_json_api(count_url)
             total = int(count_data[0].get("count", 0))
         except Exception:
             total = 50_000
         return [str(o) for o in range(0, total + PAGE_SIZE, PAGE_SIZE)]
 
     def fetch(self, offset_str):
-        params = {
-            "$limit": PAGE_SIZE,
-            "$offset": int(offset_str),
-            "$where": OPEN_FILTER,
-            "$order": "casecreateddate DESC",
-        }
-        data = fetch_json_api(BASE_URL, params=params)
+        url = (
+            f"{BASE_URL}"
+            f"?$limit={PAGE_SIZE}"
+            f"&$offset={int(offset_str)}"
+            f"&$where={OPEN_FILTER}"
+            f"&$order=casecreateddate DESC"
+        )
+        data = fetch_json_api(url)
         if offset_str == "0":
             save_artifact(self.source_id, BASE_URL, data, "json", self.VERSION, engine=self.engine)
         return data
