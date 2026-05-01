@@ -1,4 +1,4 @@
-import math
+import urllib.parse
 
 from adapters.base import BaseAdapter
 from core.fetcher import fetch_json_api, save_artifact
@@ -7,8 +7,7 @@ from core.scoring import compute_score
 
 PARSER_VERSION = "1.0.0"
 PAGE_SIZE = 1000
-BASE_URL = "https://data.phila.gov/resource/dc-n4j4.json"
-OPEN_FILTER = "violationstatus='Open'"
+CARTO_SQL_URL = "https://phl.carto.com/api/v2/sql"
 
 
 class PhillyLiViolationsAdapter(BaseAdapter):
@@ -16,26 +15,28 @@ class PhillyLiViolationsAdapter(BaseAdapter):
 
     def discover(self):
         try:
-            count_data = fetch_json_api(
-                f"{BASE_URL}?$select=count(*)&$where={OPEN_FILTER}"
-            )
-            total = int(count_data[0].get("count", 0))
+            sql = "SELECT COUNT(*) as cnt FROM violations WHERE violationstatus = 'Open'"
+            url = CARTO_SQL_URL + "?q=" + urllib.parse.quote(sql)
+            resp = fetch_json_api(url)
+            total = int(resp["rows"][0].get("cnt", 0))
         except Exception:
             total = 50_000
         return [str(o) for o in range(0, total + PAGE_SIZE, PAGE_SIZE)]
 
     def fetch(self, offset_str):
-        url = (
-            f"{BASE_URL}"
-            f"?$limit={PAGE_SIZE}"
-            f"&$offset={int(offset_str)}"
-            f"&$where={OPEN_FILTER}"
-            f"&$order=casecreateddate DESC"
+        offset = int(offset_str)
+        sql = (
+            "SELECT * FROM violations"
+            " WHERE violationstatus = 'Open'"
+            " ORDER BY violationdate DESC"
+            f" LIMIT {PAGE_SIZE} OFFSET {offset}"
         )
-        data = fetch_json_api(url)
+        url = CARTO_SQL_URL + "?q=" + urllib.parse.quote(sql)
+        resp = fetch_json_api(url)
+        data = resp.get("rows", [])
         if offset_str == "0":
             save_artifact(
-                self.source_id, BASE_URL, data, "json",
+                self.source_id, CARTO_SQL_URL, data, "json",
                 self.VERSION, engine=self.engine,
             )
         return data
@@ -54,15 +55,15 @@ class PhillyLiViolationsAdapter(BaseAdapter):
                 ] if p and p.strip()
             )
             results.append({
-                "parcel_id_raw":        rec.get("parcel_id_num", "").strip(),
+                "parcel_id_raw": rec.get("parcel_id_num", "").strip(),
                 "property_address_raw": rec.get("violationaddress", "").strip(),
-                "owner_name_raw":       rec.get("ownername", "").strip(),
-                "mailing_address_raw":  mailing,
-                "docket_number":        rec.get("casenumber", "").strip(),
-                "case_type":            rec.get("casetype", "").strip(),
-                "violation_type":       rec.get("violationdescription", "").strip(),
-                "violation_status":     rec.get("violationstatus", "").strip(),
-                "filing_date":          (rec.get("casecreateddate") or "")[:10],
+                "owner_name_raw": rec.get("ownername", "").strip(),
+                "mailing_address_raw": mailing,
+                "docket_number": rec.get("casenumber", "").strip(),
+                "case_type": rec.get("casetype", "").strip(),
+                "violation_type": rec.get("violationdescription", "").strip(),
+                "violation_status": rec.get("violationstatus", "").strip(),
+                "filing_date": (rec.get("violationdate") or "")[:10],
                 "source_url": (
                     f"https://li.phila.gov/Property-History/pi/?key="
                     f"{rec.get('parcel_id_num', '').strip()}"
@@ -73,27 +74,27 @@ class PhillyLiViolationsAdapter(BaseAdapter):
     def normalize(self, raw):
         score, priority = compute_score({"source_type": "code_violation"})
         return {
-            "source_id":                   self.source_id,
-            "source_type":                 "code_violation",
-            "state":                       "PA",
-            "county":                      "Philadelphia",
-            "property_address_raw":        raw["property_address_raw"],
+            "source_id": self.source_id,
+            "source_type": "code_violation",
+            "state": "PA",
+            "county": "Philadelphia",
+            "property_address_raw": raw["property_address_raw"],
             "property_address_normalized": normalize_address(raw["property_address_raw"]),
-            "owner_name_raw":              raw["owner_name_raw"],
-            "owner_name_normalized":       normalize_owner_name(raw["owner_name_raw"]),
-            "mailing_address_raw":         raw["mailing_address_raw"],
-            "mailing_address_normalized":  normalize_address(raw["mailing_address_raw"]),
-            "parcel_id_raw":               raw["parcel_id_raw"],
-            "parcel_id_normalized":        normalize_parcel_id(
+            "owner_name_raw": raw["owner_name_raw"],
+            "owner_name_normalized": normalize_owner_name(raw["owner_name_raw"]),
+            "mailing_address_raw": raw["mailing_address_raw"],
+            "mailing_address_normalized": normalize_address(raw["mailing_address_raw"]),
+            "parcel_id_raw": raw["parcel_id_raw"],
+            "parcel_id_normalized": normalize_parcel_id(
                 raw["parcel_id_raw"], "Philadelphia"
             ),
-            "docket_number":               raw["docket_number"],
-            "case_type":                   raw["case_type"],
-            "violation_type":              raw["violation_type"],
-            "violation_status":            raw["violation_status"],
-            "filing_date":                 raw["filing_date"],
-            "motivation_category":         "Code Violation",
-            "motivation_score":            score,
-            "motivation_score_label":      priority,
-            "source_url":                  raw["source_url"],
+            "docket_number": raw["docket_number"],
+            "case_type": raw["case_type"],
+            "violation_type": raw["violation_type"],
+            "violation_status": raw["violation_status"],
+            "filing_date": raw["filing_date"],
+            "motivation_category": "Code Violation",
+            "motivation_score": score,
+            "motivation_score_label": priority,
+            "source_url": raw["source_url"],
         }
