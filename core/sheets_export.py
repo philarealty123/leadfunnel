@@ -46,12 +46,13 @@ def _get_service(credentials_path=None):
         raise EnvironmentError("Set GOOGLE_CREDENTIALS_JSON env var.")
     with open(creds_path) as f:
         info = json.load(f)
-    # Normalize universe_domain — strip any protocol prefix if present
-    if "universe_domain" in info:
-        info["universe_domain"] = info["universe_domain"].replace("https://", "").replace("http://", "").rstrip("/")
+    # Force universe_domain to the plain string googleapis.com regardless of what's in the JSON
+    info["universe_domain"] = "googleapis.com"
     creds = service_account.Credentials.from_service_account_info(
         info, scopes=SCOPES
     )
+    # Explicitly set universe_domain on the credentials object too
+    creds._universe_domain = "googleapis.com"
     return build("sheets", "v4", credentials=creds)
 
 
