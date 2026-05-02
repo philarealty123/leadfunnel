@@ -40,11 +40,17 @@ DAILY_REVIEW_HEADERS = [
 
 
 def _get_service(credentials_path=None):
+    import json
     creds_path = credentials_path or os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if not creds_path:
         raise EnvironmentError("Set GOOGLE_CREDENTIALS_JSON env var.")
-    creds = service_account.Credentials.from_service_account_file(
-        creds_path, scopes=SCOPES
+    with open(creds_path) as f:
+        info = json.load(f)
+    # Normalize universe_domain — strip any protocol prefix if present
+    if "universe_domain" in info:
+        info["universe_domain"] = info["universe_domain"].replace("https://", "").replace("http://", "").rstrip("/")
+    creds = service_account.Credentials.from_service_account_info(
+        info, scopes=SCOPES
     )
     return build("sheets", "v4", credentials=creds)
 
