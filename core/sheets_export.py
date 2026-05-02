@@ -89,7 +89,19 @@ def _build_row(lead, uploaded_at):
 
 
 def ensure_header_row(service, spreadsheet_id, tab_name):
+    # DEBUG: log identifiers so we can verify no hidden chars or quoting
+    tab_name = tab_name.strip()
     range_name = f"{tab_name}!A1:A1"
+    print(f"[DEBUG] spreadsheet_id last6={spreadsheet_id[-6:]!r} len={len(spreadsheet_id)}")
+    print(f"[DEBUG] tab_name={tab_name!r}")
+    print(f"[DEBUG] range_name={range_name!r}")
+
+    # Confirm the tab actually exists in the spreadsheet
+    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    sheet_titles = [s["properties"]["title"] for s in meta.get("sheets", [])]
+    print(f"[DEBUG] sheet_titles={sheet_titles!r}")
+    if tab_name not in sheet_titles:
+        raise ValueError(f"Tab {tab_name!r} not found in spreadsheet. Available: {sheet_titles}")
 
     result = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
