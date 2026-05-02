@@ -1,6 +1,6 @@
 import os
+import json
 from datetime import datetime, timezone
-from typing import Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -10,6 +10,7 @@ import structlog
 from core.database import get_engine, leads, sheet_pushes
 
 log = structlog.get_logger()
+
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 DAILY_REVIEW_HEADERS = [
@@ -40,19 +41,22 @@ DAILY_REVIEW_HEADERS = [
 
 
 def _get_service(credentials_path=None):
-    import json
-    creds_path = credentials_path or os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if not creds_path:
-        raise EnvironmentError("Set GOOGLE_CREDENTIALS_JSON env var.")
-    with open(creds_path) as f:
-        info = json.load(f)
-    # Force universe_domain to the plain string googleapis.com regardless of what's in the JSON
+    if credentials_path:
+        with open(credentials_path, "r", encoding="utf-8") as f:
+            info = json.load(f)
+    else:
+        raw = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if not raw:
+            raise EnvironmentError("Set GOOGLE_CREDENTIALS_JSON env var.")
+        info = json.loads(raw)
+
     info["universe_domain"] = "googleapis.com"
+
     creds = service_account.Credentials.from_service_account_info(
-        info, scopes=SCOPES
+        info,
+        scopes=SCOPES,
     )
-    # Explicitly set universe_domain on the credentials object too
-    creds._universe_domain = "googleapis.com"
+
     return build("sheets", "v4", credentials=creds)
 
 
@@ -85,14 +89,17 @@ def _build_row(lead, uploaded_at):
 
 
 def ensure_header_row(service, spreadsheet_id, tab_name):
+    range_name = f"{tab_name}!A1:A1"
+
     result = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
-        range=f"'{tab_name}'!A1:A1"
+        range=range_name,
     ).execute()
+
     if not result.get("values"):
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
-            range=f"'{tab_name}'!A1",
+            range=f"{tab_name}!A1",
             valueInputOption="RAW",
             body={"values": [DAILY_REVIEW_HEADERS]},
         ).execute()
@@ -108,6 +115,7 @@ def push_leads_to_sheet(
     eng = engine or get_engine()
     service = _get_service(credentials_path)
     now = datetime.now(timezone.utc)
+
     with eng.connect() as conn:
         rows = conn.execute(
             select(leads)
@@ -116,29 +124,38 @@ def push_leads_to_sheet(
             .order_by(leads.c.motivation_score.desc())
             .limit(limit)
         ).mappings().all()
+
     if not rows:
         log.info("sheets.no_new_leads")
         return 0
+
     ensure_header_row(service, spreadsheet_id, tab_name)
+
     values = [_build_row(dict(r), now) for r in rows]
+
     service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
-        range=f"'{tab_name}'!A1",
+        range=f"{tab_name}!A1",
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
         body={"values": values},
     ).execute()
+
     with eng.begin() as conn:
         for r in rows:
             conn.execute(
-                update(leads).where(leads.c.id == r["id"])
+                update(leads)
+                .where(leads.c.id == r["id"])
                 .values(date_uploaded=now, status="reviewed")
             )
-            conn.execute(sheet_pushes.insert().values(
-                lead_id=r["id"],
-                sheet_tab=tab_name,
-                pushed_at=now,
-            ))
+            conn.execute(
+                sheet_pushes.insert().values(
+                    lead_id=r["id"],
+                    sheet_tab=tab_name,
+                    pushed_at=now,
+                )
+            )
+
     log.info("sheets.pushed", count=len(rows), tab=tab_name)
     return len(rows)
 
