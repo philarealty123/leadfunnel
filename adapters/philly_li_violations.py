@@ -26,7 +26,7 @@ class PhillyLiViolationsAdapter(BaseAdapter):
         try:
             sql = (
                 f"SELECT COUNT(*) as cnt FROM {TABLE}"
-                f" WHERE violationstatus = 'Open'"
+                f" WHERE violationstatus = 'OPEN'"
                 f" AND violationdate >= '{cutoff}'"
             )
             url = CARTO_SQL_URL + "?q=" + urllib.parse.quote(sql)
@@ -41,7 +41,7 @@ class PhillyLiViolationsAdapter(BaseAdapter):
         offset = int(offset_str)
         sql = (
             f"SELECT * FROM {TABLE}"
-            f" WHERE violationstatus = 'Open'"
+            f" WHERE violationstatus = 'OPEN'"
             f" AND violationdate >= '{cutoff}'"
             f" ORDER BY violationdate DESC"
             f" LIMIT {PAGE_SIZE} OFFSET {offset}"
