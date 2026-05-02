@@ -41,22 +41,24 @@ DAILY_REVIEW_HEADERS = [
 
 
 def _get_service(credentials_path=None):
-    if credentials_path:
-        with open(credentials_path, "r", encoding="utf-8") as f:
+    import pathlib
+    # Support GOOGLE_CREDENTIALS_JSON as either a file path or raw JSON string
+    raw_env = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
+    resolved_path = credentials_path or (raw_env if raw_env and pathlib.Path(raw_env).exists() else None)
+
+    if resolved_path:
+        print(f"[DEBUG] loading creds from file: {repr(resolved_path)}")
+        with open(resolved_path, "r", encoding="utf-8") as f:
             info = json.load(f)
+    elif raw_env:
+        print(f"[DEBUG] loading creds from env JSON len={len(raw_env)}")
+        info = json.loads(raw_env)
     else:
-        raw = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-        if not raw:
-            raise EnvironmentError("Set GOOGLE_CREDENTIALS_JSON env var.")
-        info = json.loads(raw)
+        raise EnvironmentError("Set GOOGLE_CREDENTIALS_JSON to a file path or JSON string.")
 
     info["universe_domain"] = "googleapis.com"
-
-    creds = service_account.Credentials.from_service_account_info(
-        info,
-        scopes=SCOPES,
-    )
-
+    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    creds._universe_domain = "googleapis.com"
     return build("sheets", "v4", credentials=creds)
 
 
