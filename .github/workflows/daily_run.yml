@@ -8,6 +8,7 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,11 +20,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Check DB URL scheme
-        run: python -c "import os; url=os.environ.get('DATABASE_URL',''); print('db_scheme=' + (url.split('://')[0] if '://' in url else 'not_set'))"
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
       - name: Restore SQLite DB cache
         uses: actions/cache@v4
         with:
@@ -31,24 +27,27 @@ jobs:
           key: leads-db-v1
           restore-keys: leads-db-v1
 
+      - name: Ensure data directory exists
+        run: mkdir -p data
+
       - name: Write Google credentials
         run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > /tmp/goog_creds.json
 
       - name: Init DB
         run: python main.py init-db
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: sqlite:///data/leads.db
 
       - name: Run all active adapters
         run: python main.py run
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: sqlite:///data/leads.db
           GOOGLE_CREDENTIALS_JSON: /tmp/goog_creds.json
 
       - name: Push to Google Sheet
         run: python main.py push-sheet
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: sqlite:///data/leads.db
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_CREDENTIALS_JSON: /tmp/goog_creds.json
 
