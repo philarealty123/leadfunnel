@@ -12,7 +12,7 @@ PAGE_SIZE = 1000
 BASE_URL = "https://data.phila.gov/resource/w7rb-qrn8.json"
 # Residential category codes: 1=single family, 2=multi-family
 CATEGORY_FILTER = "category_code IN('1','2')"
-LOOKBACK_DAYS = 30
+LOOKBACK_DAYS = 90
 
 
 def _cutoff_date():
