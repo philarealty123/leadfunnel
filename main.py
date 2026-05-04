@@ -91,7 +91,7 @@ def run(source, config, dry_run):
 
 @cli.command()
 @click.option("--sheet-id", envvar="GOOGLE_SHEET_ID", required=True)
-@click.option("--tab", default="Daily_Review")
+@click.option("--tab", default="master_leads")
 @click.option("--limit", default=500, type=int)
 def push_sheet(sheet_id, tab, limit):
     from core.database import init_db as _init
