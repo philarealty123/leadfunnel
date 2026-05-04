@@ -47,11 +47,9 @@ def _get_service(credentials_path=None):
     resolved_path = credentials_path or (raw_env if raw_env and pathlib.Path(raw_env).exists() else None)
 
     if resolved_path:
-        print(f"[DEBUG] loading creds from file: {repr(resolved_path)}")
         with open(resolved_path, "r", encoding="utf-8") as f:
             info = json.load(f)
     elif raw_env:
-        print(f"[DEBUG] loading creds from env JSON len={len(raw_env)}")
         info = json.loads(raw_env)
     else:
         raise EnvironmentError("Set GOOGLE_CREDENTIALS_JSON to a file path or JSON string.")
@@ -68,42 +66,41 @@ def _build_row(lead, uploaded_at):
         lead.get("motivation_score_label", ""),
         lead.get("motivation_category", ""),
         str(lead.get("motivation_score", "")),
-        lead.get("property_address_normalized") or lead.get("property_address_raw", ""),
-        lead.get("owner_name_normalized") or lead.get("owner_name_raw", ""),
-        lead.get("mailing_address_normalized") or lead.get("mailing_address_raw", ""),
+        lead.get("property_address", ""),
+        lead.get("owner_name", ""),
+        lead.get("mailing_address", ""),
         lead.get("county", ""),
         lead.get("state", ""),
-        lead.get("parcel_id_normalized") or lead.get("parcel_id_raw", ""),
-        lead.get("source_id", ""),
+        lead.get("parcel_id", ""),
+        lead.get("source_name", ""),
         lead.get("source_type", ""),
-        lead.get("source_url", ""),
-        lead.get("sale_date", ""),
-        lead.get("filing_date", ""),
-        str(lead.get("amount_due", "") or ""),
+        lead.get("source_link", ""),
+        str(lead.get("sale_date") or ""),
+        str(lead.get("filing_date") or ""),
+        str(lead.get("amount_due") or ""),
         lead.get("violation_type", ""),
         lead.get("docket_number", ""),
         "",
         "",
-        uploaded_at.strftime("%Y-%m-%d %H:%M UTC"),
-        str(lead.get("first_seen_at", "")),
+        uploaded_at.strftime("%Y-%m-%d"),
+        str(lead.get("first_seen") or ""),
         str(lead.get("id", "")),
     ]
 
 
 def ensure_header_row(service, spreadsheet_id, tab_name):
-    # DEBUG: log identifiers so we can verify no hidden chars or quoting
     tab_name = tab_name.strip()
     range_name = f"{tab_name}!A1:A1"
-    print(f"[DEBUG] spreadsheet_id last6={spreadsheet_id[-6:]!r} len={len(spreadsheet_id)}")
-    print(f"[DEBUG] tab_name={tab_name!r}")
-    print(f"[DEBUG] range_name={range_name!r}")
 
-    # Confirm the tab actually exists in the spreadsheet
+    # Confirm the tab exists; auto-create if missing
     meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     sheet_titles = [s["properties"]["title"] for s in meta.get("sheets", [])]
-    print(f"[DEBUG] sheet_titles={sheet_titles!r}")
     if tab_name not in sheet_titles:
-        raise ValueError(f"Tab {tab_name!r} not found in spreadsheet. Available: {sheet_titles}")
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": tab_name}}}]}
+        ).execute()
+        log.info("sheets.tab_created", tab=tab_name)
 
     result = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
@@ -121,7 +118,7 @@ def ensure_header_row(service, spreadsheet_id, tab_name):
 
 def push_leads_to_sheet(
     spreadsheet_id,
-    tab_name="Daily_Review",
+    tab_name="master_leads",
     credentials_path=None,
     engine=None,
     limit=500,
@@ -132,12 +129,9 @@ def push_leads_to_sheet(
 
     with eng.connect() as conn:
         rows = conn.execute(
-            select(leads)
-            .where(leads.c.date_uploaded == None)
-            .where(leads.c.status == "new")
-            .order_by(leads.c.motivation_score.desc())
-            .limit(limit)
+            select(leads).where(leads.c.date_uploaded.is_(None)).limit(limit)
         ).mappings().all()
+        rows = [dict(r) for r in rows]
 
     if not rows:
         log.info("sheets.no_new_leads")
@@ -145,8 +139,7 @@ def push_leads_to_sheet(
 
     ensure_header_row(service, spreadsheet_id, tab_name)
 
-    values = [_build_row(dict(r), now) for r in rows]
-
+    values = [_build_row(r, now) for r in rows]
     service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
         range=f"{tab_name}!A1",
