@@ -6,7 +6,7 @@ from core.fetcher import fetch_json_api, save_artifact
 from core.normalizer import normalize_address, normalize_parcel_id, normalize_owner_name
 from core.scoring import compute_score
 
-PARSER_VERSION = "1.0.0"
+PARSER_VERSION = "1.1.0"
 PAGE_SIZE = 1000
 CARTO_SQL_URL = "https://phl.carto.com/api/v2/sql"
 TABLE = "violations"
@@ -59,7 +59,8 @@ class PhillyLiViolationsAdapter(BaseAdapter):
     def parse(self, raw):
         results = []
         for rec in raw:
-            if not rec.get("violationaddress"):
+            property_address = rec.get("address") or rec.get("violationaddress")
+            if not property_address:
                 continue
             mailing = ", ".join(
                 p.strip() for p in [
@@ -70,18 +71,18 @@ class PhillyLiViolationsAdapter(BaseAdapter):
                 ] if p and p.strip()
             )
             results.append({
-                "parcel_id_raw": rec.get("parcel_id_num", "").strip(),
-                "property_address_raw": rec.get("violationaddress", "").strip(),
-                "owner_name_raw": rec.get("ownername", "").strip(),
+                "parcel_id_raw": (rec.get("opa_account_num") or rec.get("parcel_id_num") or "").strip(),
+                "property_address_raw": property_address.strip(),
+                "owner_name_raw": (rec.get("opa_owner") or rec.get("ownername") or "").strip(),
                 "mailing_address_raw": mailing,
-                "docket_number": rec.get("casenumber", "").strip(),
-                "case_type": rec.get("casetype", "").strip(),
-                "violation_type": rec.get("violationdescription", "").strip(),
-                "violation_status": rec.get("violationstatus", "").strip(),
+                "docket_number": (rec.get("casenumber") or "").strip(),
+                "case_type": (rec.get("casetype") or "").strip(),
+                "violation_type": (rec.get("violationcodetitle") or rec.get("violationdescription") or rec.get("violationcode") or "").strip(),
+                "violation_status": (rec.get("violationstatus") or "").strip(),
                 "filing_date": (rec.get("violationdate") or "")[:10],
                 "source_url": (
                     f"https://li.phila.gov/Property-History/pi/?key="
-                    f"{rec.get('parcel_id_num', '').strip()}"
+                    f"{(rec.get('opa_account_num') or rec.get('parcel_id_num') or '').strip()}"
                 ),
             })
         return results
