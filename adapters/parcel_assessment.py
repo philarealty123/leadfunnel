@@ -1,4 +1,3 @@
-import math
 import urllib.parse
 from datetime import datetime, timedelta
 
@@ -9,7 +8,8 @@ from core.scoring import compute_score
 
 PARSER_VERSION = "1.0.0"
 PAGE_SIZE = 1000
-BASE_URL = "https://data.phila.gov/resource/w7rb-qrn8.json"
+BASE_URL = "https://phl.carto.com/api/v2/sql"
+TABLE = "opa_properties_public"
 # Residential category codes: 1=single family, 2=multi-family
 CATEGORY_FILTER = "category_code IN('1','2')"
 LOOKBACK_DAYS = 90
@@ -31,30 +31,27 @@ class ParcelAssessmentAdapter(BaseAdapter):
         """
         cutoff = _cutoff_date()
         try:
-            url = (
-                f"{BASE_URL}"
-                f"?$select=count(*)"
-                f"&$where={CATEGORY_FILTER}"
-                f" AND recording_date>='{cutoff}'"
+            sql = (
+                f"SELECT COUNT(*) AS count FROM {TABLE} WHERE {CATEGORY_FILTER}"
+                f" AND recording_date >= '{cutoff}'"
             )
-            count_data = fetch_json_api(url)
-            total = int(count_data[0].get("count", 0))
+            count_data = fetch_json_api(BASE_URL, params={"q": sql})
+            total = int(count_data["rows"][0].get("count", 0))
         except Exception:
             # Fallback: pull a capped batch; dedupe prevents reprocessing
             total = PAGE_SIZE
-        return [str(o) for o in range(0, max(total, PAGE_SIZE) + PAGE_SIZE, PAGE_SIZE)]
+        return [str(o) for o in range(0, max(total, 1), PAGE_SIZE)]
 
     def fetch(self, offset_str):
         cutoff = _cutoff_date()
-        url = (
-            f"{BASE_URL}"
-            f"?$limit={PAGE_SIZE}"
-            f"&$offset={int(offset_str)}"
-            f"&$where={CATEGORY_FILTER}"
-            f" AND recording_date>='{cutoff}'"
-            f"&$order=recording_date DESC"
+        sql = (
+            f"SELECT * FROM {TABLE} WHERE {CATEGORY_FILTER}"
+            f" AND recording_date >= '{cutoff}'"
+            f" ORDER BY recording_date DESC"
+            f" LIMIT {PAGE_SIZE} OFFSET {int(offset_str)}"
         )
-        data = fetch_json_api(url)
+        response = fetch_json_api(BASE_URL, params={"q": sql})
+        data = response.get("rows", [])
         if offset_str == "0":
             save_artifact(
                 self.source_id, BASE_URL, data[:50], "json",

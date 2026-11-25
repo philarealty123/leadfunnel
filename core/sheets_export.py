@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 import structlog
 
 from core.database import get_engine, leads, sheet_pushes
+from core.scoring import score_to_priority
 
 log = structlog.get_logger()
 
@@ -61,29 +62,31 @@ def _get_service(credentials_path=None):
 
 
 def _build_row(lead, uploaded_at):
+    score = int(lead.get("motivation_score") or 0)
+    amount_due = lead.get("amount_due")
     return [
         "",
-        lead.get("motivation_score_label", ""),
+        score_to_priority(score),
         lead.get("motivation_category", ""),
-        str(lead.get("motivation_score", "")),
-        lead.get("property_address", ""),
-        lead.get("owner_name", ""),
-        lead.get("mailing_address", ""),
+        score,
+        lead.get("property_address_raw", ""),
+        lead.get("owner_name_raw", ""),
+        lead.get("mailing_address_raw", ""),
         lead.get("county", ""),
         lead.get("state", ""),
-        lead.get("parcel_id", ""),
-        lead.get("source_name", ""),
+        lead.get("parcel_id_normalized") or lead.get("parcel_id_raw", ""),
+        lead.get("source_id", ""),
         lead.get("source_type", ""),
-        lead.get("source_link", ""),
+        lead.get("source_url", ""),
         str(lead.get("sale_date") or ""),
         str(lead.get("filing_date") or ""),
-        str(lead.get("amount_due") or ""),
+        float(amount_due) if amount_due is not None else "",
         lead.get("violation_type", ""),
         lead.get("docket_number", ""),
         "",
         "",
         uploaded_at.strftime("%Y-%m-%d"),
-        str(lead.get("first_seen") or ""),
+        str(lead.get("first_seen_at") or ""),
         str(lead.get("id", "")),
     ]
 

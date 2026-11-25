@@ -2,12 +2,17 @@ name: Daily Motivated Seller Pipeline
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    # 6:00 AM EST / 7:00 AM EDT, Monday-Friday. This leaves a buffer before 8 AM ET.
+    - cron: '0 11 * * 1-5'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -24,14 +29,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data/leads.db
-          key: leads-db-v1
-          restore-keys: leads-db-v1
+          key: leads-db-v2-${{ github.run_id }}
+          restore-keys: |
+            leads-db-v2-
 
       - name: Ensure data directory exists
         run: mkdir -p data
 
       - name: Write Google credentials
-        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > /tmp/goog_creds.json
+        run: printf '%s' '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > /tmp/goog_creds.json
 
       - name: Init DB
         run: python main.py init-db
@@ -56,4 +62,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data/leads.db
-          key: leads-db-v1
+          key: leads-db-v2-${{ github.run_id }}
+
+      - name: Preserve operational run summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-run-${{ github.run_id }}
+          path: data/run_summary.json
+          if-no-files-found: warn
+          retention-days: 30

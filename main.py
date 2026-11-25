@@ -10,9 +10,11 @@ Usage:
   python main.py init-db
 """
 import importlib
+import json
 import os
 import logging
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -59,18 +61,35 @@ def run(source, config, dry_run):
     else:
         sources = load_sources(config_path=config)
 
+    started_at = datetime.now(timezone.utc)
+    summary = {
+        "started_at": started_at.isoformat(),
+        "completed_at": None,
+        "dry_run": dry_run,
+        "sources": [],
+    }
+    successful_sources = 0
+
     for cfg in sources:
         module_name = f"adapters.{cfg['parser_module']}"
         try:
             mod = importlib.import_module(module_name)
         except ImportError as e:
             log.warning("main.adapter_not_found", module=module_name, error=str(e))
+            summary["sources"].append({
+                "source_id": cfg["id"], "status": "failed", "error": str(e)[:500],
+                "total": 0, "new": 0,
+            })
             continue
 
         class_name = _to_class_name(cfg["parser_module"])
         adapter_cls = getattr(mod, class_name, None)
         if not adapter_cls:
             log.warning("main.class_not_found", class_name=class_name)
+            summary["sources"].append({
+                "source_id": cfg["id"], "status": "failed",
+                "error": f"Adapter class {class_name} not found", "total": 0, "new": 0,
+            })
             continue
 
         adapter = adapter_cls(cfg, engine=engine)
@@ -78,15 +97,36 @@ def run(source, config, dry_run):
 
         new_count = 0
         total_count = 0
-        for record in adapter.run():
-            total_count += 1
-            if not dry_run:
-                _, is_new = upsert_lead(record, engine=engine)
-                if is_new:
-                    new_count += 1
+        try:
+            for record in adapter.run():
+                total_count += 1
+                if not dry_run:
+                    _, is_new = upsert_lead(record, engine=engine)
+                    if is_new:
+                        new_count += 1
+            successful_sources += 1
+            summary["sources"].append({
+                "source_id": cfg["id"], "status": "success",
+                "total": total_count, "new": new_count,
+            })
+            log.info("main.adapter_done", source_id=cfg["id"],
+                     total=total_count, new=new_count, dry_run=dry_run)
+        except Exception as e:
+            log.exception("main.adapter_failed", source_id=cfg["id"], error=str(e))
+            summary["sources"].append({
+                "source_id": cfg["id"], "status": "failed", "error": str(e)[:500],
+                "total": total_count, "new": new_count,
+            })
 
-        log.info("main.adapter_done", source_id=cfg["id"],
-                 total=total_count, new=new_count, dry_run=dry_run)
+    summary["completed_at"] = datetime.now(timezone.utc).isoformat()
+    summary["successful_sources"] = successful_sources
+    summary["failed_sources"] = len(sources) - successful_sources
+    summary_path = Path("data/run_summary.json")
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    if sources and successful_sources == 0:
+        raise click.ClickException("All configured sources failed. See data/run_summary.json.")
 
 
 @cli.command()

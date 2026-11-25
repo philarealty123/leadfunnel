@@ -63,7 +63,13 @@ def fetch_url(url: str, headers: dict = None, timeout: int = 30) -> requests.Res
     return resp
 
 
-def fetch_json_api(url: str, params: dict = None, headers: dict = None, timeout: int = 30) -> list:
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(requests.RequestException),
+    reraise=True,
+)
+def fetch_json_api(url: str, params: dict = None, headers: dict = None, timeout: int = 30):
     hdrs = {**DEFAULT_HEADERS, **(headers or {})}
     resp = requests.get(url, params=params, headers=hdrs, timeout=timeout)
     resp.raise_for_status()
